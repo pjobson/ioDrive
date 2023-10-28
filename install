@@ -29,3 +29,11 @@ else
 fi
 
 sudo update-grub
+
+# Firmware
+
+echo "To update the firmware:"
+echo "sudo fio-show"
+echo "note the drives ftc0 = /dev/ftc0"
+echo "sudo fio-update-iodrive --device /dev/ftc0 /usr/share/fio/firmware/fusion_3.2.16-20180821.fff"
+
