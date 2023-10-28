@@ -1,8 +1,0 @@
-#!/bin/sh
-set -e
-# Automatically added by dh_installinit
-if [ -x "/etc/init.d/iomemory-vsl" ]; then
-	update-rc.d iomemory-vsl defaults >/dev/null
-	invoke-rc.d iomemory-vsl start || exit $?
-fi
-# End automatically added section

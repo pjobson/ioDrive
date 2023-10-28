@@ -1,17 +1,31 @@
 #!/bin/bash
 
-# etc
-sudo cp -rv ./etc/dracut.conf.d /etc/
-sudo cp -v ./etc/init.d/* /etc/init.d/
-sudo cp -v ./etc/modprobe.d/* /etc/modprobe.d/
-sudo cp -rv ./etc/sysconfig /etc/
+# deb files
+sudo dpkg -i fio-util_3.2.16.1731-1.0_amd64.deb
+sudo dpkg -i fio-common_3.2.16.1731-1.0_amd64.deb
+sudo dpkg -i fio-firmware-fusion_3.2.16.20180821-1_all.deb
+sudo dpkg -i fio-sysvinit_3.2.16.1731-1.0_all.deb
 
-# lib
-sudo cp -v ./lib/udev/rules.d/* /lib/udev/rules.d/
+# iomemory-vsl driver
 
-# usr
-sudo cp -v ./usr/bin/* /usr/bin/
-sudo mkdir -p /usr/lib/fio/init/
-sudo cp -v ./usr/lib/fio/init/* /usr/lib/fio/init/
-sudo cp -rv ./usr/share/doc/* /usr/share/doc/
-sudo cp -v ./usr/share/man/man8/* /usr/share/man/man8/
+git clone git@github.com:RemixVSL/iomemory-vsl.git
+cd iomemory-vsl/
+make module
+sudo insmod root/usr/src/iomemory-vsl-3.2.16/iomemory-vsl.ko
+sudo make dkms
+
+# Update GRUB
+ISAMD=$(lscpu |grep "Model name" |grep AMD)
+
+if [[ $ISAMD = "" ]];
+then
+	# INTEL
+	# add iommu=pt to GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub
+	sudo sed -i -E 's/GRUB_CMDLINE_LINUX_DEFAULT="(.+)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 iommu=pt"/g' /etc/default/grub
+else
+	# AMD
+	# add amd_iommu=on iommu=pt to GRUB_CMDLINE_LINUX_DEFAULT in /etc/default/grub
+	sudo sed -i -E 's/GRUB_CMDLINE_LINUX_DEFAULT="(.+)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 amd_iommu=on iommu=pt"/g' /etc/default/grub
+fi
+
+sudo update-grub
