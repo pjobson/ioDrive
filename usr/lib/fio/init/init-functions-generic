@@ -1,0 +1,56 @@
+# -*- shell-script -*-
+#
+
+INIT_FUNCTIONS="${INIT_LIBDIR}/init-functions-x-generic"
+
+if [ -r ${INIT_FUNCTIONS} ]; then
+    . ${INIT_FUNCTIONS}
+else
+    [ -z "$DEBUG" ] || printf "${INIT_FUNCTIONS}: file not found\n" >&2
+    false
+fi
+
+
+x_log_success_msg()
+{
+    x_generic_log_success_msg "$@"
+}
+
+
+x_log_failure_msg()
+{
+    x_generic_log_failure_msg "$@"
+}
+
+
+x_log_warning_msg()
+{
+    x_generic_log_warning_msg "$@"
+}
+
+
+x_status()
+{
+    local rc=0
+    x_generic_status "$@" || rc=$?
+    return $rc
+}
+
+
+x_start()
+{
+    local rc=0
+    x_generic_start "$@" || rc=$?
+    return $rc
+}
+
+
+x_stop()
+{
+    local rc=0
+    x_generic_stop "$@" || rc=$?
+    return $rc
+}
+
+
+true

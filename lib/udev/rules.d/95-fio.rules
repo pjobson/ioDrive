@@ -1,0 +1,1 @@
+SUBSYSTEM=="block", KERNEL=="fio*", PROGRAM="/usr/bin/fio-iodrive.sh %p", SYMLINK+="dsk/FIO-%c disk/by-path/FIO-%c"

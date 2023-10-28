@@ -1,0 +1,376 @@
+# -*- shell-script -*-
+#
+# Base functions that can be included and used by any distros init scripts
+#
+
+
+x_generic_log_success_msg()
+{
+    printf "$@\n"
+}
+
+
+x_generic_log_failure_msg()
+{
+    printf "$@\n"
+}
+
+
+x_generic_log_warning_msg()
+{
+    printf "$@\n"
+}
+
+
+####
+#
+# x_generic_pidof [-s] [-c] [-x] [-o omitpid] [-o omitpid..]  program [program..]
+#
+#    -s           Single shot - return as soon as the first PID is found.
+#    -c           Only match process IDs that have the same root directory
+#                 (not implimented).
+#    -x           Include script parsers running the named scripts
+#                 (not implimented).
+#    -o OMITPID   Omit OMITPID if found.
+#
+#  RETURNS
+#    0            At least on PID was found
+#    1            No PIDs were found
+x_generic_pidof()
+{
+    local pidof="$(which pidof 2>/dev/null)"
+
+    if [ -n "$pidof" ]; then
+        "$pidof" "$@"
+        return
+    fi
+
+    local rc=1
+    local opt=
+    local singleshot=
+    local same_root=
+    local scripts_too=
+    local omit_pids=
+
+    OPTIND=1
+    while getopts 'co:sx' opt; do
+	case $opt in
+	    (c) same_root=1;;
+	    (o) omit_pids="${omit_pids:+$omit_pids }$OPTARG";;
+	    (s) singleshot=1;;
+	    (x) scripts_too=1;;
+	esac
+    done
+
+    shift $(($OPTIND-1))
+
+    local prog=
+    local pids=
+    local pid=
+    local opid=
+
+    for pid in $(ls /proc 2>/dev/null); do
+	case "$pid" in
+	    ([0-9]*[0-9]) ;;
+	    (*) continue ;;
+	esac
+
+	for opid in $omit_pids; do
+	    if [ "$opid" -eq "$pid" ]; then
+		continue
+	    fi
+	done
+
+	# FIXME - readlink of /proc/*/exe only works for root
+	local exe="$(readlink --canonicalize "/proc/$pid/exe" 2>/dev/null)"
+	if [ -z "$exe" ]; then
+	    continue
+	fi
+
+	for prog in "$@"; do
+	    prog="$(readlink --canonicalize "$prog")"
+
+	    if [ "$prog" = "$exe" ]; then
+		pids="${pids:+$pids }$pid"
+		rc=0
+
+		if [ -n "$singleshot" ]; then
+		    printf "$pids\n"
+		    return $rc
+		fi
+	    fi
+	done
+    done
+
+    printf "$pids\n"
+    return $rc
+}
+
+
+x_generic_new_pids()
+{
+    local orig_pids="$1"
+    local new_pids="$2"
+    local orig_ifs="$IFS"
+    IFS="
+"
+
+    set -- $orig_pids $new_pids
+    local single_pids="$(echo "$*" | sort -n | uniq -u)"
+
+    set -- $single_pids $new_pids
+    local pids="$(echo "$*" | sort -n | uniq -d)"
+
+    IFS="$orig_ifs"
+
+    printf "$pids\n"
+}
+
+
+####
+#
+# x_generic_status [-n NAME] [-p PIDFILE] DAEMON
+#
+#    -n NAME      The name by which the service is known.  Defaults
+#                 to the basename of the DAEMON program.
+#    -p PIDFILE   The pidfile associated with the running daemon.
+#                 Defaults to /var/run/NAME.pid.
+#    DAEMON       The path to the daemon program.
+#
+#  RETURNS
+#    0            Process is running
+#    1            Process is not running and PIDFILE exists
+#    3            Process is not running
+#    4            Unknown state
+x_generic_status()
+{
+    local opt=
+    local pidfile=
+    local daemon=
+    local name=
+    local pid=
+    local pid_exe=
+
+    OPTIND=1
+    while getopts 'p:n:' opt; do
+        case "$opt" in
+            (n) name="$OPTARG";;
+            (p) pidfile="$OPTARG";;
+        esac
+    done
+
+    shift $(($OPTIND-1))
+    daemon="$(readlink --canonicalize "$1")"
+    shift
+
+    if [ -z "$name" ]; then
+	name="${daemon##*/}"
+    fi
+
+    if [ -z "$pidfile" ]; then
+	pidfile="/var/run/$name.pid"
+    fi
+
+    if [ -f "$pidfile" ]; then
+	read pid <"$pidfile"
+
+	if [ -z "$pid" ]; then
+	    # PIDFILE exists but is empty
+	    return 4
+	fi
+
+	# FIXME - readlink of /proc/*/exe only works for root
+	pid_exe="$(readlink "/proc/$pid/exe")"
+	if [ -z "$pid_exe" \
+	    -o "$pid_exe" != "$daemon" ]; then
+	    # PIDFILE exists but cannot find process
+	    return 1
+	fi
+
+	# PID exists and it is the same executable
+	return 0
+
+	#if kill -0 "$pid" >/dev/null 2>&1; then
+	#    # Process is running - hopefully it is the same DAEMON
+	#    return 0
+	#elif ps "$pid" >/dev/null 2>&1
+	#    # Process is running - hopefully it is the same DAEMON
+	#    return 0
+	#else
+	#    # PIDFILE exists but cannot find process
+	#    return 1
+	#fi
+    else
+	# No PIDFILE - assume not running
+	return 3
+    fi
+}
+
+
+####
+#
+# x_generic_start [-c] [-n NAME] [-p PIDFILE] DAEMON [-- DAEMON_ARGS]
+#
+#    -c           Create the PIDFILE (used if the daemon does not
+#                 create the PIDFILE.
+#    -n NAME      The name by which the service is known.  Defaults
+#                 to the basename of the DAEMON program.
+#    -p PIDFILE   The pidfile associated with the running daemon.
+#                 Defaults to /var/run/NAME.pid.
+#    DAEMON       The path to the daemon program.
+#    DAEMON_ARGS  Arguments passed to the daemon.  Must be prefixed by
+#                 '--' to disable parsing of local options.
+x_generic_start()
+{
+    local opt=
+    local pidfile=
+    local daemon=
+    local name=
+    local create=
+
+    OPTIND=1
+    while getopts 'cn:p:' opt; do
+        case "$opt" in
+	    (c) create=1;;
+            (n) name="$OPTARG";;
+            (p) pidfile="$OPTARG";;
+        esac
+    done
+
+    shift $(($OPTIND-1))
+    daemon="$(readlink --canonicalize "$1")"
+    shift
+
+    if [ -z "$name" ]; then
+	name="${daemon##*/}"
+    fi
+
+    if [ -z "$pidfile" ]; then
+	pidfile="/var/run/${daemon##*/}.pid"
+    fi
+
+    if [ "--" = "${1:-}" ]; then
+	shift
+    fi
+
+    if x_generic_status -p "$pidfile" "$daemon"; then
+	# Already running
+	x_log_warning_msg " Already running "
+	return 1
+    fi
+
+    local orig_pids="$(x_generic_pidof "$daemon")"
+
+    if "$DAEMON" "$@"; then
+	local rc=0
+
+	if [ -n "$create" ]; then
+	    # Try to avoid a race condition between starting, forking and capturing the PID
+	    sleep 2
+
+	    local new_pids="$(x_generic_pidof "$daemon")"
+	    local pid="$(x_generic_new_pids "$orig_pids" "$new_pids")"
+
+	    # -z seems to work where -n doesn't for this comparison
+	    if [ ! -z $pid ]; then
+	        printf "$pid\n" >"$pidfile"
+	    else
+		rc=1
+	    fi
+	fi
+	return $rc
+    else
+	return 1
+    fi
+}
+
+
+####
+#
+# x_generic_stop [-d] [-n NAME] [-p PIDFILE] DAEMON
+#
+#    -d           Delete the PIDFILE (used if the daemon does not
+#                 delete the PIDFILE.
+#    -n NAME      The name by which the service is known.  Defaults
+#                 to the basename of the DAEMON program.
+#    -p PIDFILE   The pidfile associated with the running daemon.
+#                 Defaults to /var/run/NAME.pid.
+#    -s SIGNAL    A signal number or name (no '-' prefix).
+#    -t SECONDS   A timeout to wait for the process to terminate.
+#                 Defaults to 5 seconds.
+#    DAEMON       The path to the daemon program.
+#
+#  RETURNS
+#    0            Successfully terminated
+#    1            Unable to terminate process
+x_generic_stop()
+{
+    local opt=
+    local pidfile=
+    local daemon=
+    local name=
+    local delete=
+    local pid=
+    local signal="15"
+    local timeout=5
+    local rc=1
+
+    OPTIND=1
+    while getopts 'dfn:p:s:t:' opt; do
+        case "$opt" in
+	    (d) delete=1;;
+            (n) name="$OPTARG";;
+            (p) pidfile="$OPTARG";;
+	    (s) signal="$OPTARG";;
+	    (t) timeout="$OPTARG";;
+        esac
+    done
+
+    shift $(($OPTIND-1))
+    daemon="$(readlink --canonicalize "$1")"
+    shift
+
+    if [ -z "$name" ]; then
+	name="${daemon##*/}"
+    fi
+
+    if [ -z "$pidfile" ]; then
+	pidfile="/var/run/${daemon##*/}.pid"
+    fi
+
+    if [ "x${signal#-}" = "x$signal" ]; then
+	signal="-$signal"
+    fi
+
+    if ! x_generic_status -p "$pidfile" "$daemon"; then
+	# Not running
+	x_log_warning_msg " Not running "
+	return 1
+    fi
+
+    read pid <"$pidfile"
+    if [ -z "$pid" ]; then
+	x_log_warning_msg " Missing PID "
+	return 1
+    fi
+
+    kill "$signal" "$pid"
+
+    local count=0
+    while [ "$count" -lt "$timeout" ]; do
+	if ! x_generic_status "$daemon"; then
+	    rc=0
+	    if [ -n "$delete" ]; then
+		rm -f "$pidfile"
+	    fi
+	    break
+	fi
+	sleep 1
+	count=$((count+1))
+    done
+
+    return $rc
+}
+
+
+true

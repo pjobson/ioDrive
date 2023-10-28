@@ -1,0 +1,183 @@
+# -*- shell-script -*-
+#
+
+INIT_FUNCTIONS="${INIT_LIBDIR}/init-functions-x-generic"
+
+if [ -r ${INIT_FUNCTIONS} ]; then
+    . ${INIT_FUNCTIONS}
+else
+    [ -z "$DEBUG" ] || printf "${INIT_FUNCTIONS}: file not found\n" >&2
+    false
+fi
+
+
+x_log_success_msg()
+{
+    x_generic_log_success_msg "$@"
+}
+
+
+x_log_failure_msg()
+{
+    x_generic_log_failure_msg "$@"
+}
+
+
+x_log_warning_msg()
+{
+    x_generic_log_warning_msg "$@"
+}
+
+
+x_status()
+{
+    local rc=0
+
+    x_generic_status "$@" || rc=$?
+
+    return $rc
+}
+
+
+####
+#
+# x_start [-c] [-n NAME] [-p PIDFILE] DAEMON [-- DAEMON_ARGS]
+#
+#    -c           Create the PIDFILE (used if the daemon does not
+#                 create the PIDFILE.
+#    -n NAME      The name by which the service is known.  Defaults
+#                 to the basename of the DAEMON program.
+#    -p PIDFILE   The pidfile associated with the running daemon.
+#                 Defaults to /var/run/NAME.pid.
+#    DAEMON       The path to the daemon program.
+#    DAEMON_ARGS  Arguments passed to the daemon.  Must be prefixed by
+#                 '--' to disable parsing of local options.
+x_start()
+{
+    local rc=0
+    local opt=
+    local pidfile=
+    local daemon=
+    local name=
+    local create=
+
+    OPTIND=1
+    while getopts 'cn:p:' opt; do
+        case "$opt" in
+	    (c) create=1;;
+            (n) name="$OPTARG";;
+            (p) pidfile="$OPTARG";;
+        esac
+    done
+
+    shift $(($OPTIND-1))
+    daemon="$(readlink --canonicalize "$1")"
+    shift
+
+    if [ -z "$name" ]; then
+	name="${daemon##*/}"
+    fi
+
+    if [ -z "$pidfile" ]; then
+	pidfile="/var/run/${daemon##*/}.pid"
+    fi
+
+    if x_status -p "$pidfile" "$daemon"; then
+	# already running
+	return 0
+    fi
+
+    if [ "--" = "${1:-}" ]; then
+	shift
+    fi
+
+    local orig_pids="$(x_generic_pidof "$daemon")"
+
+    start-stop-daemon -S -p "$pidfile" -n "$name" -x "$daemon" -- "$@" || rc=$?
+
+    if [ -n "$create" ]; then
+        # Try to avoid a race condition between starting, forking and capturing the PID
+	sleep 2
+
+	local new_pids="$(x_generic_pidof "$daemon")"
+	local pid="$(x_generic_new_pids "$orig_pids" "$new_pids")"
+
+	# -z seems to work where -n doesn't for this comparison
+	if [ ! -z $pid ]; then
+	    printf "$pid\n" >"$pidfile"
+	else
+	    rc=1
+	fi
+    fi
+
+    return $rc
+}
+
+
+####
+#
+# x_generic_stop [-d] [-n NAME] [-p PIDFILE] DAEMON
+#
+#    -d           Delete the PIDFILE (used if the daemon does not
+#                 delete the PIDFILE.
+#    -n NAME      The name by which the service is known.  Defaults
+#                 to the basename of the DAEMON program.
+#    -p PIDFILE   The pidfile associated with the running daemon.
+#                 Defaults to /var/run/NAME.pid.
+#    -s SIGNAL    A signal number or name (no '-' prefix).
+#    -t SECONDS   A timeout to wait for the process to terminate.
+#                 Defaults to 5 seconds.
+#    DAEMON       The path to the daemon program.
+#
+#  RETURNS
+#    0            Successfully terminated
+#    1            Unable to terminate process
+x_stop()
+{
+    local opt=
+    local pidfile=
+    local daemon=
+    local name=
+    local delete=
+    local forcekill=
+    local pid=
+    local signal="15"
+    local timeout=5
+    local rc=0
+
+    OPTIND=1
+    while getopts 'dfn:p:s:t:' opt; do
+        case "$opt" in
+	    (d) delete=1;;
+	    (f) forcekill=1;;
+            (n) name="$OPTARG";;
+            (p) pidfile="$OPTARG";;
+	    (s) signal="$OPTARG";;
+	    (t) timeout="$OPTARG";;
+        esac
+    done
+
+    shift $(($OPTIND-1))
+    daemon="$(readlink --canonicalize "$1")"
+    shift
+
+    if [ -z "$name" ]; then
+	name="${daemon##*/}"
+    fi
+
+    if [ -z "$pidfile" ]; then
+	pidfile="/var/run/${daemon##*/}.pid"
+    fi
+
+    start-stop-daemon --retry "$timeout" -K -s "$signal" -p "$pidfile" "$daemon" || rc=$?
+
+    if [ 0 -eq "$rc" \
+	-a -n "$delete" ]; then
+	rm -f "$pidfile"
+    fi
+
+    return $rc
+}
+
+
+true

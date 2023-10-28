@@ -1,0 +1,40 @@
+# -*- shell-script -*-
+#
+# Generic init functions for different distributions
+# This takes the place of using LSB since LSB is poorly implemented on some distributions:
+# https://bugzilla.redhat.com/show_bug.cgi?id=472630
+
+#WARNING: Do on enable the -e below except in testing. Some distros have
+#         problems in their source scripts that it will break.
+#         FIXME - maybe disable "set -e" on a case-by-case basis inside the
+#                 distro-specific init function files?
+#set -e
+
+DISTRO_DETECT=/usr/bin/distro_detect
+INIT_LIBDIR=/usr/lib/fio/init
+
+
+if ! [ -x "${DISTRO_DETECT}" ]; then
+    env printf "ERROR: missing necessary file: ${DISTRO_DETECT}\n" >&2
+    exit 1
+fi
+
+eval $(distro_detect)
+
+
+if [ -r ${INIT_LIBDIR}/init-functions-${DISTRO_NAME}-${DISTRO_VERSION} ] \
+    && . ${INIT_LIBDIR}/init-functions-${DISTRO_NAME}-${DISTRO_VERSION}; then
+    true
+elif [ -r ${INIT_LIBDIR}/init-functions-${DISTRO_NAME} ] \
+    && . ${INIT_LIBDIR}/init-functions-${DISTRO_NAME}; then
+    true
+elif [ -r ${INIT_LIBDIR}/init-functions-lsb ] \
+    && . ${INIT_LIBDIR}/init-functions-lsb; then
+    true
+elif [ -r ${INIT_LIBDIR}/init-functions-generic ] \
+    && . ${INIT_LIBDIR}/init-functions-generic; then
+    true
+else
+    [ -z "$DEBUG" ] || printf "No working init-functions found.\n" >&2
+    false
+fi

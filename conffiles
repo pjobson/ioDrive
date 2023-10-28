@@ -1,0 +1,4 @@
+/etc/init.d/iomemory-vsl
+/etc/dracut.conf.d/iomemory-vsl.conf
+/etc/sysconfig/iomemory-vsl
+/etc/modprobe.d/iomemory-vsl.conf

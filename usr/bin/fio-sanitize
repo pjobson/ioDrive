@@ -1,0 +1,4 @@
+#!/bin/bash
+echo The fio-sanitize utility has been deprecated.  Please use fio-sure-erase.
+echo Running fio-sure-erase $* now.
+fio-sure-erase $*

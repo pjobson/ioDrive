@@ -1,0 +1,11 @@
+# -*- shell-script -*-
+#
+
+INIT_FUNCTIONS="${INIT_LIBDIR}/init-functions-redhat"
+
+if [ -r ${INIT_FUNCTIONS} ]; then
+    . ${INIT_FUNCTIONS}
+else
+    [ -z "$DEBUG" ] || printf "${INIT_FUNCTIONS}: file not found\n" >&2
+    false
+fi

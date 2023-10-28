@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# etc
+sudo cp -rv ./etc/dracut.conf.d /etc/
+sudo cp -v ./etc/init.d/* /etc/init.d/
+sudo cp -v ./etc/modprobe.d/* /etc/modprobe.d/
+sudo cp -rv ./etc/sysconfig /etc/
+
+# lib
+sudo cp -v ./lib/udev/rules.d/* /lib/udev/rules.d/
+
+# usr
+sudo cp -v ./usr/bin/* /usr/bin/
+sudo mkdir -p /usr/lib/fio/init/
+sudo cp -v ./usr/lib/fio/init/* /usr/lib/fio/init/
+sudo cp -rv ./usr/share/doc/* /usr/share/doc/
+sudo cp -v ./usr/share/man/man8/* /usr/share/man/man8/
